@@ -1,0 +1,7 @@
+name = "ReAnimation"
+uuid = "ed54f85f-91e3-4912-9e4a-a43af611f8a9"
+authors = ["Kaptue Talom Lael <gesee37@gmail.com>"]
+version = "0.1.0"
+
+[compat]
+julia = "1.9"
