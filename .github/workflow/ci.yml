@@ -1,0 +1,170 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }} - ${{ github.event_name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - '1.6'  # LTS
+          - '1.9'  # Current stable
+          - '1.10' # Latest
+          - 'nightly'
+        os:
+          - ubuntu-latest
+          - macOS-latest
+          - windows-latest
+        arch:
+          - x64
+          - x86
+        exclude:
+          # 32-bit Julia binaries are not available on macOS
+          - os: macOS-latest
+            arch: x86
+          # Reduce CI load - test nightly only on Linux x64
+          - version: 'nightly'
+            os: macOS-latest
+          - version: 'nightly'
+            os: windows-latest
+          - version: 'nightly'
+            arch: x86
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: julia-actions/setup-julia@v1
+        with:
+          version: ${{ matrix.version }}
+          arch: ${{ matrix.arch }}
+          
+      - uses: julia-actions/cache@v1
+      
+      - uses: julia-actions/julia-buildpkg@v1
+      
+      - uses: julia-actions/julia-runtest@v1
+      
+      - uses: julia-actions/julia-processcoverage@v1
+      
+      - uses: codecov/codecov-action@v3
+        with:
+          files: lcov.info
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: julia-actions/setup-julia@v1
+        with:
+          version: '1'
+          
+      - uses: julia-actions/julia-buildpkg@v1
+      
+      - uses: julia-actions/julia-docdeploy@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
+
+  compat:
+    name: Compatibility Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: julia-actions/setup-julia@v1
+        with:
+          version: '1'
+          
+      - name: Check Project.toml format
+        run: |
+          julia -e '
+            using Pkg
+            Pkg.activate(".")
+            # Vérifier que le Project.toml est valide
+            project = Pkg.TOML.parsefile("Project.toml")
+            @assert haskey(project, "name")
+            @assert haskey(project, "uuid") 
+            @assert haskey(project, "version")
+            println("✓ Project.toml is valid")
+          '
+
+  benchmark:
+    name: Benchmark Performance
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - uses: julia-actions/setup-julia@v1
+        with:
+          version: '1'
+          
+      - uses: julia-actions/julia-buildpkg@v1
+      
+      - name: Run benchmarks
+        run: |
+          julia -e '
+            using Pkg
+            Pkg.add("BenchmarkTools")
+            Pkg.develop(PackageSpec(path="."))
+            include("benchmark/benchmarks.jl")
+          '
+
+  register:
+    name: Register Package
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: [test, docs]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: julia-actions/setup-julia@v1
+        with:
+          version: '1'
+          
+      - name: Register with Julia Registry
+        uses: julia-actions/RegisterAction@v0.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: [test, docs]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+          body: |
+            ## Changes in this release
+            
+            See [CHANGELOG.md](CHANGELOG.md) for details.
+            
+            ## Installation
+            ```julia
+            julia> ]add ReAnimation@${{ github.ref_name }}
+            ```
