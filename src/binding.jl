@@ -3,7 +3,7 @@
 #####################################################################################################################
 
 export AbstractBinding, ObjectBinding, ArrayBinding, DictBinding, set!
-export bind, at!
+export bind!, at!, animate!, animation
 
 ######################################################### CORE ######################################################
 
@@ -39,23 +39,48 @@ AbstractBinding(anim,obj, p::Symbol) = ObjectBinding(anim,obj, p)
 AbstractBinding(anim::A,obj::AbstractArray{T}, i::Int) where {A,T} = ArrayBinding{A,T}(anim,obj, i)
 AbstractBinding(anim::A,obj::AbstractDict{K,V}, key::K) where {A,K,V} = DictBinding{A,K,V}(anim,obj, key)
 
+duration(b::AbstractBinding) = duration(animation(b))
+
 set!(b::AbstractBinding, ::Any) = error("set! isn't defined for binding of type $(typeof(b))")
 set!(b::ObjectBinding{S}, v) where S = setproperty!(b.obj, S, v)
 set!(b::ArrayBinding, v) = (b.array[b.pos] = v)
 set!(b::DictBinding, v) = (b.dict[b.key] = v)
 
 at!(a::AbstractBinding, t::Real) = set!(a, at(a.anim, t))
-function animate!(binding::AbstractBinding; start=0.0, speed=1/60, delay=speed, loop=1)
-    d = duration(binding.anim)
-    return @async begin
-        for _ in 1:(loop == 0 ? typemax(Int) : loop)
-            for t in range(start, start+d, step=speed)
-                set!(binding, at(stack, t, value_at_start))
-                sleep(delay)
-            end
+animation(b::AbstractBinding) = b.anim
+
+function animate!(bindings::AbstractBinding...;
+        duration = maximum(duration, bindings),
+        fps::Int = 60)
+
+    frameduration = 1 / fps
+
+    t_start = time()
+    t_target = t_start
+
+    interrupt_switch = Ref(false)
+
+    task = @async_showerr while !interrupt_switch[]
+
+        t_current = time()
+        t_relative = t_current - t_start
+
+        for binding in bindings
+            at!(binding,t_relative)
         end
+
+        if t_relative >= duration
+            break
+        end
+
+        # always try to hit the next target exactly one frame duration away from
+        # the last to avoid drift
+        t_target += frameduration
+        sleeptime = t_target - time()
+        sleep_ns(max(0.001, sleeptime))
     end
+
+    AnimationTask(task, interrupt_switch)
 end
 
-Base.bind(anim, obj, property) = (b=AbstractBinding(obj,property); bind!(anim,b); return b)
 bind!(anim::AbstractAnimation, b::AbstractBinding) = setfield!(b, :anim, anim)

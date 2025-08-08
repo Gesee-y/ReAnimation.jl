@@ -2,6 +2,9 @@
 ##################################################### ANIMATION PLAYER ###############################################
 ######################################################################################################################
 
+export RPlayer
+export LoopMode, PlayState
+export seek!, seek_relative!, pause!, resume!, reverse!, speed!, loop_mode!, update!, runasync!, reset!
 
 ########################################################### CORE #####################################################
 
@@ -16,7 +19,7 @@ end
     Pause
 end
 
-mutable struct Player{T}
+mutable struct RPlayer
     anim::RAnimation
     binding::AbstractBinding
 
@@ -33,31 +36,41 @@ mutable struct Player{T}
     duration::Float64
 end
 
-function Player(anim::RAnimation, obj, property;
-                speed=1.0, loop::LoopMode=Loop,
+function RPlayer(anim::RAnimation, obj, property;
+                speed=1.0, loop::LoopMode=Once,
                 on_finish=nothing, on_loop=nothing)
-    binding = AbstractBinding(obj, property)
-    Player(anim, binding,
+    binding = AbstractBinding(anim, obj, property)
+    RPlayer(binding;
+           speed=speed, loop=loop,
+           on_finish=on_finish, on_loop=on_loop,
+          )
+end
+function RPlayer(binding::AbstractBinding;
+                speed=1.0, loop::LoopMode=Once,
+                on_finish=nothing, on_loop=nothing)
+    RPlayer(animation(binding), binding,
            0.0, speed, Pause,
            loop, +1,
            on_finish, on_loop,
-           duration(anim))
+           duration(animation(binding)))
 end
 
 ###################################################### FUNCTIONS ######################################################
 
-seek!(p::Player, t::Real)      = (p.time = clamp(t, 0.0, p.duration); update!(p))
-seek_relative!(p, Δ::Real)     = seek!(p, p.time + Δ)
+seek!(p::RPlayer, t::Real)      = (p.time = clamp(t, 0.0, p.duration); at!(p.binding, 0.0))
+seek_relative!(p, Δ::Real)      = seek!(p, p.time + Δ)
 
-pause!(p::Player)              = (p.state = Pause)
-resume!(p::Player)             = (p.state = Play)
-reverse!(p::Player)            = (p.direction = -p.direction)
-speed!(p::Player, s::Real)     = (p.speed = s * p.direction)
+pause!(p::RPlayer)              = (p.state = Pause)
+resume!(p::RPlayer)             = (p.state = Play)
+reverse!(p::RPlayer)            = (p.direction = -p.direction)
+speed!(p::RPlayer, s::Real)     = (p.speed = s * p.direction)
+reset!(p::RPlayer)              = seek!(p, 0.0)
 
-loop_mode!(p::Player, m::LoopMode) = (p.loop = m)
+loop_mode!(p::RPlayer, m::LoopMode) = (p.loop = m)
+isfinish(p::RPlayer) = p.time >= p.duration
 
-function update!(p::Player, dt::Real=0.0)
-    dt == 0.0 || p.state == Pause && return p.time
+function update!(p::RPlayer, dt::Real=0.0)
+    (dt == 0.0 || p.state == Pause) && return p.time
 
     Δ = p.speed * p.direction * dt
     p.time += Δ
@@ -79,7 +92,38 @@ function update!(p::Player, dt::Real=0.0)
         end
     end
 
-    val = at(p.anim, p.time)
-    set!(p.binding, val)
+    at!(p.binding, p.time)
     return p.time
+end
+
+function runasync!(player::RPlayer; fps::Int = 60)
+
+    frameduration = 1 / fps
+    frameduration <= 0 && error("Can't have negative frame rate.")
+
+    t_start = time()
+    t_target = t_start
+    resume!(player)
+
+    interrupt_switch = Ref(false)
+
+    task = @async_showerr while !interrupt_switch[]
+
+        t_current = time()
+        t_relative = t_current - t_start
+
+        update!(player, frameduration)
+
+        if isfinish(player)
+            break
+        end
+
+        # always try to hit the next target exactly one frame duration away from
+        # the last to avoid drift
+        t_target += frameduration
+        sleeptime = t_target - time()
+        sleep_ns(max(0.001, sleeptime))
+    end
+
+    AnimationTask(task, interrupt_switch)
 end

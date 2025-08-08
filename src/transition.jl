@@ -8,7 +8,7 @@ export BezierTransition, HermiteTransition, CatmullRomTransition
 export QuadraticTransition, CubicTransition
 export ElasticTransition, BounceTransition, BackTransition, SmoothstepN, Smoothstep, Smootherstep, Quinticstep
 export SpringTransition
-export EaseIn, EaseOut, EaseInOut, ElasticEase, BounceEase, BackEase, SineEase, CircEase, ExponentialEase
+export NoEase, EaseIn, EaseOut, EaseInOut, ElasticEase, BounceEase, BackEase, SineEase, CircEase, ExponentialEase
 export QuinticEase
 
 ######################################################## CORE ########################################################
@@ -81,18 +81,19 @@ struct SmoothstepTransition{T} <: CurvedTransition
 	time::Float32
 	trans::T
 end
+SmoothstepTransition(t,tr::T) where T<:AbstractTransition = SmoothstepTransition{T}(t,tr)
 
-struct CubicCurveTransition{T} <: CurvedTransition
-    tan_in::T
-    tan_out::T
+struct CubicCurveTransition <: CurvedTransition
+    tan_in::Float64
+    tan_out::Float64
 end
 struct BezierTransition{T} <: CurvedTransition
-    cp1::T
-    cp2::T
+    cp1::Float64
+    cp2::Float64
 end
-struct HermiteTransition{T} <: CurvedTransition
-    tan_in::T
-    tan_out::T
+struct HermiteTransition <: CurvedTransition
+    tan_in::Float64
+    tan_out::Float64
 end
 struct CatmullRomTransition <: CurvedTransition end
 
@@ -101,66 +102,68 @@ const CubicTransition = ExponentialTransition{3}
 
 """
     ElasticTransition{T} <: CurvedTransition
-Elastic easing with configurable amplitude `amp` (≥ 0) and period `period` (> 0).
+Elastic transition with configurable amplitude `amp` (≥ 0) and period `period` (> 0).
 """
 struct ElasticTransition{T} <: CurvedTransition
     amp::T
     period::T
 end
-# constructeur par défaut
 ElasticTransition() = ElasticTransition(0.3, 0.3)
 
 """
     BounceTransition <: CurvedTransition
 Classic bounce effect (configurable via `bounces`, default = 4).
 """
-struct BounceTransition{T} <: CurvedTransition
-    bounces::T
+struct BounceTransition <: CurvedTransition
+    bounces::Int
 end
 BounceTransition() = BounceTransition(4)
 
 """
-    BackTransition{T} <: CurvedTransition
+    BackTransition <: CurvedTransition
 Goes slightly « back » then forward.  `s` controls overshoot.
 """
-struct BackTransition{T} <: CurvedTransition
-    s::T
+struct BackTransition <: CurvedTransition
+    s::Float64
 end
 BackTransition() = BackTransition(1.70158)
 
 """
-    SmoothstepN{N} <: CurvedTransition
+    SmoothTransitionN <: CurvedTransition
 Generic smoothstep of degree N (2,3,4,5…).
 """
-struct SmoothstepN{N} <: CurvedTransition end
-const Smoothstep  = SmoothstepN{2}
-const Smootherstep = SmoothstepN{3}
-const Quinticstep  = SmoothstepN{5}
+struct SmoothNTransition{N} <: CurvedTransition end
+const SmoothTransition  = SmoothNTransition{2}
+const SmootherTransition = SmoothNTransition{3}
+const QuinticTransition  = SmoothNTransition{5}
 
 """
     SpringTransition{T} <: CurvedTransition
 Damped spring motion. `damping` ∈ ]0,1], `freq` > 0.
 """
-struct SpringTransition{T} <: CurvedTransition
-    damping::T
-    freq::T
+struct SpringTransition <: CurvedTransition
+    damping::Float64
+    freq::Float64
 end
 SpringTransition() = SpringTransition(0.25, 6.28)
 
+##### Easing
+
+struct NoEase <: AbstractEase{1} end
 struct EaseIn{N} <: AbstractEase{N} end
 struct EaseOut{N} <: AbstractEase{N} end
 struct EaseInOut{N} <: AbstractEase{N} end
 
-struct ElasticEase{T} <: AbstractEase{0}
-    amp::T
-    period::T
+struct ElasticEase <: AbstractEase{0}
+    amp::Float64
+    period::Float64
 end
 ElasticEase() = ElasticEase(1, 0.3)
 
 struct BounceEase <: AbstractEase{0} end
 
-struct BackEase{T} <: AbstractEase{0}
-    s::T
+struct BackEase <: AbstractEase{0}
+    s::Float64
 end
 BackEase() = BackEase(1.70158)
 
@@ -168,8 +171,8 @@ struct SineEase <: AbstractEase{0} end
 
 struct CircEase <: AbstractEase{0} end
 
-struct ExponentialEase{T} <: AbstractEase{0}
-    base::T
+struct ExponentialEase <: AbstractEase{0}
+    base::Int
 end
 ExponentialEase() = ExponentialEase(2)
 
@@ -200,7 +203,6 @@ function (tr::BounceTransition)(a, b, t)
     c = b - a
     n = tr.bounces
     k = one(t) - t
-    # formule classique
     d = k^(2n) * (sin(π * k * n) / sin(π/n)) * c
     b - d
 end
@@ -213,7 +215,7 @@ function (tr::BackTransition)(a, b, t)
     c * t * t2 * ((s + one(t)) * t - s) + a
 end
 
-function (tr::SmoothstepN{N})(a, b, t) where N
+function (tr::SmoothNTransition{N})(a, b, t) where N
     t = clamp(t, zero(t), one(t))
     tN = t^N
     c = b - a
@@ -229,6 +231,7 @@ function (tr::SpringTransition)(a, b, t)
 end
 
 (::AbstractEase{1})(t) = t
+(::NoEase)(t) = t
 (::EaseIn{n})(t) where n <: Integer = (1 << (n-1))*t^n
 (::EaseIn{n})(t) where n <: AbstractFloat = (2^(n-1))*t^n
 (::EaseIn{2})(t) = 2t*t
