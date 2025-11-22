@@ -63,7 +63,7 @@ seek_relative!(p, Δ::Real)      = seek!(p, p.time + Δ)
 pause!(p::RPlayer)              = (p.state = Pause)
 resume!(p::RPlayer)             = (p.state = Play)
 reverse!(p::RPlayer)            = (p.direction = -p.direction)
-speed!(p::RPlayer, s::Real)     = (p.speed = s * p.direction)
+speed!(p::RPlayer, s::Real)     = (p.speed = s)
 reset!(p::RPlayer)              = seek!(p, 0.0)
 
 loop_mode!(p::RPlayer, m::LoopMode) = (p.loop = m)
