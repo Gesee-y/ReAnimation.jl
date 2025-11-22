@@ -34,23 +34,20 @@ mutable struct RPlayer
     on_loop::Vector{Function}
 
     duration::Float64
-end
 
-function RPlayer(anim::RAnimation, obj, property;
+    function RPlayer(anim::RAnimation, obj, property;
                 speed=1.0, loop::LoopMode=Once)
-    binding = AbstractBinding(anim, obj, property)
-    RPlayer(binding;
-           speed=speed, loop=loop,
-           on_finish=Function[], on_loop=Function[],
-          )
-end
-function RPlayer(binding::AbstractBinding;
-                speed=1.0, loop::LoopMode=Once)
-    RPlayer(animation(binding), binding,
-           0.0, speed, Pause,
-           loop, +1,
-           Function[], Function[],
-           duration(animation(binding)))
+        binding = AbstractBinding(anim, obj, property)
+        new(anim, binding, 0.0, speed, Pause, loop, 1,
+               Function[], Function[], duration(anim)
+              )
+    end
+    function RPlayer(binding::AbstractBinding;
+                    speed=1.0, loop::LoopMode=Once)
+        new(animation(binding), binding, 0.0, speed, Pause,
+               loop, +1, Function[], Function[],
+               duration(animation(binding)))
+    end
 end
 
 ###################################################### FUNCTIONS ######################################################
@@ -59,7 +56,7 @@ seek!(p::RPlayer, t::Real)      = (p.time = clamp(t, 0.0, p.duration); at!(p.bin
 seek_relative!(p, Δ::Real)      = seek!(p, p.time + Δ)
 
 pause!(p::RPlayer)              = (p.state = Pause)
-resume!(p::RPlayer)             = (p.state = Play)
+play!(p::RPlayer)             = (p.state = Play)
 reverse!(p::RPlayer)            = (p.direction = -p.direction)
 speed!(p::RPlayer, s::Real)     = (p.speed = s)
 reset!(p::RPlayer)              = seek!(p, 0.0)

@@ -11,13 +11,13 @@ struct RAnimation <: AbstractAnimation
     animation::Vector{KFAnimationFrame}
     loop::Int
 
-    function RAnimation(animation::Vector{KFAnimationFrame}, loop::Int=1)
+    function RAnimation(animation::Vector, loop::Int=1)
         loop < 0 && error("Loop count must be ≥ 0")
         new(animation, loop)
     end
+    RAnimation(frames::KFAnimationFrame...;loop=1) = RAnimation(KFAnimationFrame[frames...], loop)
 end
 
-RAnimation(frames...;loop=1) = RAnimation(KFAnimationFrame[frames...], loop)
 
 ####################################################### FUNCTIONS ###################################################
 

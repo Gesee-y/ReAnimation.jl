@@ -13,11 +13,11 @@ mutable struct TrackManager
     state::PlayState
 end
 
-TrackManager(;speed=1.0) = TrackManager(Dict{Symbol,Tuple{Player,AbstractBinding}}(), 0.0, speed, Pause)
+TrackManager(;speed=1.0) = TrackManager(Dict{Symbol,Tuple{RPlayer,AbstractBinding}}(), 0.0, speed, Pause)
 
 function bind_track!(tm::TrackManager, name::Symbol,
                      anim::RAnimation, obj, property; kw...)
-    bind_track!(tm,RPlayer(anim, obj, property; kw...))
+    bind_track!(tm,name,RPlayer(anim, obj, property; kw...))
 end
 function bind_track!(tm::TrackManager, name::Symbol,
                      player::RPlayer)
@@ -26,7 +26,7 @@ function bind_track!(tm::TrackManager, name::Symbol,
 end
 
 remove_track!(tm::TrackManager, name::Symbol) = delete!(tm.tracks, name)
-play!(tm::TrackManager)    = (tm.state = Play)
+play!(tm::TrackManager)    = (tm.state = Play; foreach(player -> play!(player), values(tm.tracks)))
 pause!(tm::TrackManager)   = (tm.state = Pause)
 seek!(tm::TrackManager, t) = (tm.master_time = t; update!(tm, 0.0))
 seek_relative!(tm::TrackManager, Δ::Real) = seek!(tm, tm.master_time + Δ)
@@ -39,6 +39,7 @@ function update!(tm::TrackManager, dt::Real=0.0)
     tm.master_time += dt_total
     for (name, player) in tm.tracks
         update!(player, dt_total)
+        println(dt_total)
         isfinish(player) && delete!(tm.tracks, name)
     end
     return tm.master_time

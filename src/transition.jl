@@ -9,7 +9,7 @@ export QuadraticTransition, CubicTransition
 export ElasticTransition, BounceTransition, BackTransition, SmoothstepN, Smoothstep, Smootherstep, Quinticstep
 export SpringTransition
 export NoEase, EaseIn, EaseOut, EaseInOut, ElasticEase, BounceEase, BackEase, SineEase, CircEase, ExponentialEase
-export QuinticEase
+export QuinticEase, QuadraticEase, CubicEase
 
 ######################################################## CORE ########################################################
 
@@ -171,10 +171,9 @@ struct SineEase <: AbstractEase{0} end
 
 struct CircEase <: AbstractEase{0} end
 
-struct ExponentialEase <: AbstractEase{0}
-    base::Int
-end
-ExponentialEase() = ExponentialEase(2)
+struct ExponentialEase{N} <: AbstractEase{N} end
+const QuadraticEase = ExponentialEase{2}
+const CubicEase = ExponentialEase{3}
 
 struct QuinticEase <: AbstractEase{0} end
 
@@ -270,11 +269,11 @@ end
 (::CircEase)(t) = one(t) - sqrt(one(t) - t*t)
 (::QuinticEase)(t) = t < 0.5 ? 16t^5 : 1 - 16(1-t)^5
 
-function (e::ExponentialEase)(t)
+function (e::ExponentialEase{N})(t) where N
     t = clamp(t, zero(t), one(t))
     t ≈ zero(t) && return zero(t)
     t ≈ one(t)  && return one(t)
-    (e.base^(t) - one(t)) / (e.base - one(t))
+    (N^(t) - one(t)) / (N - one(t))
 end
 
 
