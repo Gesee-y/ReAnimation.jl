@@ -37,8 +37,9 @@ track(tm::TrackManager, name::Symbol) = tm.tracks[name]
 function update!(tm::TrackManager, dt::Real=0.0)
     dt_total = tm.state == Play ? dt * tm.speed : 0.0
     tm.master_time += dt_total
-    for player in values(tm.tracks)
+    for (name, player) in tm.tracks
         update!(player, dt_total)
+        isfinish(player) && delete!(tm.tracks, name)
     end
     return tm.master_time
 end

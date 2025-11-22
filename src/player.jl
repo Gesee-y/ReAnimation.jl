@@ -3,7 +3,7 @@
 ######################################################################################################################
 
 export RPlayer
-export LoopMode, PlayState
+export LoopMode, PlayState, on_finish!, on_loop!, loop_mode
 export seek!, seek_relative!, pause!, resume!, reverse!, speed!, loop_mode!, update!, runasync!, reset!
 
 ########################################################### CORE #####################################################
@@ -30,28 +30,26 @@ mutable struct RPlayer
     direction::Int         # +1 forward, -1 backward
 
     # callbacks
-    on_finish::Union{Nothing,Function}
-    on_loop::Union{Nothing,Function}
+    on_finish::Vector{Function}
+    on_loop::Vector{Function}
 
     duration::Float64
 end
 
 function RPlayer(anim::RAnimation, obj, property;
-                speed=1.0, loop::LoopMode=Once,
-                on_finish=nothing, on_loop=nothing)
+                speed=1.0, loop::LoopMode=Once)
     binding = AbstractBinding(anim, obj, property)
     RPlayer(binding;
            speed=speed, loop=loop,
-           on_finish=on_finish, on_loop=on_loop,
+           on_finish=Function[], on_loop=Function[],
           )
 end
 function RPlayer(binding::AbstractBinding;
-                speed=1.0, loop::LoopMode=Once,
-                on_finish=nothing, on_loop=nothing)
+                speed=1.0, loop::LoopMode=Once)
     RPlayer(animation(binding), binding,
            0.0, speed, Pause,
            loop, +1,
-           on_finish, on_loop,
+           Function[], Function[],
            duration(animation(binding)))
 end
 
@@ -67,10 +65,14 @@ speed!(p::RPlayer, s::Real)     = (p.speed = s)
 reset!(p::RPlayer)              = seek!(p, 0.0)
 
 loop_mode!(p::RPlayer, m::LoopMode) = (p.loop = m)
+loop_mode(p::RPlayer) = p.loop
 isfinish(p::RPlayer) = p.time >= p.duration
 
+on_finish!(f, p::RPlayer) = push!(p.on_finish, f)
+on_loop!(f, p::RPlayer) = push!(p.on_loop, f)
+
 function update!(p::RPlayer, dt::Real=0.0)
-    (dt == 0.0 || p.state == Pause) && return p.time
+    (dt == 0.0 || p.state == Pause || (isfinish(p) && loop_mode(p) == Once)) && return p.time
 
     Δ = p.speed * p.direction * dt
     p.time += Δ
@@ -79,16 +81,16 @@ function update!(p::RPlayer, dt::Real=0.0)
         if p.loop == Once
             p.time = clamp(p.time, 0.0, p.duration)
             p.state = Pause
-            isnothing(p.on_finish) || p.on_finish(p)
+            _exec_listener(p.on_finish)
             return p.time
         elseif p.loop == Loop
             p.time = mod(p.time, p.duration)
-            isnothing(p.on_loop) || p.on_loop(p)
+            _exec_listener(p.on_loop)
         else # PingPong
             overshoot = p.time > p.duration ? p.time - p.duration : -p.time
             p.direction = -p.direction
             p.time = clamp(overshoot, 0.0, p.duration)
-            isnothing(p.on_loop) || p.on_loop(p)
+            _exec_listener(p.on_loop)
         end
     end
 
@@ -126,4 +128,10 @@ function runasync!(player::RPlayer; fps::Int = 60)
     end
 
     AnimationTask(task, interrupt_switch)
+end
+
+function _exec_listener(v::Vector{Function}, args...)
+    for f in v
+        f(args...)
+    end
 end
